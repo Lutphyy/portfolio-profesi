@@ -139,7 +139,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <Section className="bg-white/[0.02]">
           <FadeInOnScroll>
             <div className="text-center space-y-4 mb-12">
-              <Badge variant="primary">My Best</Badge>
               <h2 className="text-2xl sm:text-3xl font-bold text-white">
                 Featured Project
               </h2>
