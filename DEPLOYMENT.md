@@ -56,10 +56,11 @@ git push origin main
 3. **Click** "Add New Project"
 4. **Import** repository: `Lutphyy/portfolio-profesi`
 5. **Configure Project**:
-   - Framework Preset: `Other`
+   - Framework Preset: `Other` (JANGAN pilih Remix/React Router preset)
    - Build Command: `npm run build`
-   - Output Directory: `build/client`
+   - Output Directory: **KOSONGKAN** (jangan isi apa-apa)
    - Install Command: `npm install`
+   - Root Directory: `./` (default)
 6. **Add Environment Variables** (sangat penting!):
    ```
    SUPABASE_URL = (dari .env file)
@@ -68,9 +69,12 @@ git push origin main
    GITHUB_URL = https://github.com/Lutphyy
    LINKEDIN_URL = (dari .env file)
    EMAIL = (dari .env file)
+   NODE_ENV = production
    ```
 7. **Click** "Deploy"
 8. **Tunggu** ~2-3 menit
+
+> **⚠️ PENTING**: Aplikasi ini menggunakan React Router v8 dengan SSR. File `vercel.json` dan `api/server.js` sudah dikonfigurasi untuk menangani serverless deployment.
 
 **Option B: Via Vercel CLI**
 
@@ -89,7 +93,7 @@ vercel
 # - Project name: portfolio-profesi
 # - Directory: ./
 # - Build command: npm run build
-# - Output directory: build/client
+# - Output directory: (tekan Enter, kosongkan)
 ```
 
 ### 3️⃣ Setup Environment Variables di Vercel
@@ -183,6 +187,22 @@ npm run typecheck
 
 # Fix errors, then commit & push
 ```
+
+### Issue: 404 NOT_FOUND Error
+
+**Penyebab**: React Router v8 menggunakan SSR (Server-Side Rendering), tapi Vercel mencoba serve static files saja.
+
+**Solution**:
+1. Pastikan file `vercel.json` ada dengan config:
+   ```json
+   {
+     "buildCommand": "npm run build",
+     "rewrites": [{ "source": "/(.*)", "destination": "/api/server" }]
+   }
+   ```
+2. Pastikan file `api/server.js` ada
+3. Di Vercel Dashboard → Settings → General → **Output Directory kosongkan**
+4. Redeploy project
 
 ### Issue: ENV Variables Not Working
 
