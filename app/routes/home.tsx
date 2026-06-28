@@ -1,12 +1,13 @@
 import type { Route } from "./+types/home";
+import { Link } from "react-router";
 import { Navbar } from "~/components/sections/Navbar";
 import { HeroSection } from "~/components/sections/HeroSection";
 import { ProjectCard } from "~/components/sections/ProjectCard";
 import { Footer } from "~/components/sections/Footer";
 import { Section } from "~/components/ui/Container";
+import { Button } from "~/components/ui/Button";
 import { FadeInOnScroll } from "~/components/animations/FadeInOnScroll";
 import { InfiniteScroll } from "~/components/animations/InfiniteScroll";
-import { Badge } from "~/components/ui/Badge";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
 import { getSiteConfig } from "~/services/config.service";
 import { getFeaturedProjects } from "~/services/project.service";
@@ -155,6 +156,31 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </FadeInOnScroll>
             ))}
           </div>
+
+          {/* View All Projects Button */}
+          <FadeInOnScroll delay={450}>
+            <div className="flex justify-center mt-12">
+              <Link to="/projects" prefetch="intent">
+                <Button variant="secondary" className="group">
+                  View All Projects
+                  <svg
+                    className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                    />
+                  </svg>
+                </Button>
+              </Link>
+            </div>
+          </FadeInOnScroll>
         </Section>
       )}
 

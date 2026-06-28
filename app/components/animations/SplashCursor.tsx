@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface SplashCursorProps {
   RAINBOW_MODE?: boolean;
@@ -12,6 +12,30 @@ export function SplashCursor({
   maxHeight = Infinity 
 }: SplashCursorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isLowEndDevice, setIsLowEndDevice] = useState(false);
+
+  useEffect(() => {
+    // Detect low-end device
+    const checkDevicePerformance = () => {
+      // Check for mobile devices
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      // Check for low memory (if available)
+      const deviceMemory = (navigator as any).deviceMemory;
+      const hasLowMemory = deviceMemory && deviceMemory < 4;
+      
+      // Check for reduced motion preference
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      
+      // Check hardware concurrency (CPU cores)
+      const lowCPU = navigator.hardwareConcurrency && navigator.hardwareConcurrency < 4;
+      
+      // Mark as low-end if mobile with low specs or user prefers reduced motion
+      setIsLowEndDevice(prefersReducedMotion || (isMobile && (hasLowMemory || lowCPU)));
+    };
+    
+    checkDevicePerformance();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -19,6 +43,9 @@ export function SplashCursor({
 
     let isActive = true;
     let animationId: number;
+    let lastFrameTime = 0;
+    const targetFPS = isLowEndDevice ? 30 : 60; // Lower FPS for low-end devices
+    const frameInterval = 1000 / targetFPS;
 
     // Setup canvas size - limit to maxHeight
     const resizeCanvas = () => {
@@ -29,7 +56,10 @@ export function SplashCursor({
     };
     resizeCanvas();
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { 
+      alpha: true,
+      desynchronized: true // Better performance on some devices
+    });
     if (!ctx) return;
 
     // Particle system
@@ -51,6 +81,10 @@ export function SplashCursor({
     let prevMouseY = -9999;
     let isMouseInBounds = false;
 
+    // Adjust particle settings based on device performance
+    const maxParticles = isLowEndDevice ? 80 : 200;
+    const particleCountMultiplier = isLowEndDevice ? 0.5 : 1;
+
     function createParticles(x: number, y: number, count: number = 3) {
       // Only create particles if within bounds
       if (!isMouseInBounds || y > maxHeight || y < 0) return;
@@ -59,7 +93,10 @@ export function SplashCursor({
       const dy = y - prevMouseY;
       const velocity = Math.sqrt(dx * dx + dy * dy);
 
-      for (let i = 0; i < count; i++) {
+      // Reduce particle count for low-end devices
+      const adjustedCount = Math.ceil(count * particleCountMultiplier);
+
+      for (let i = 0; i < adjustedCount; i++) {
         const hue = RAINBOW_MODE ? Math.random() * 360 : 250;
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * 2 + velocity * 0.1;
@@ -71,22 +108,31 @@ export function SplashCursor({
           vy: Math.sin(angle) * speed,
           life: 1,
           maxLife: Math.random() * 0.5 + 0.5,
-          size: Math.random() * 4 + 2,
+          size: Math.random() * 3 + 1.5, // Slightly smaller particles
           color: `hsl(${hue}, 100%, 60%)`,
         });
       }
 
       // Keep particle count reasonable
-      if (particles.length > 200) {
-        particles.splice(0, particles.length - 200);
+      if (particles.length > maxParticles) {
+        particles.splice(0, particles.length - maxParticles);
       }
     }
 
-    function animate() {
+    function animate(timestamp: number) {
       if (!isActive || !ctx || !canvas) return;
 
-      // Fade effect
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+      // Throttle frame rate for consistent performance
+      const elapsed = timestamp - lastFrameTime;
+      if (elapsed < frameInterval) {
+        animationId = requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameTime = timestamp - (elapsed % frameInterval);
+
+      // Fade effect - more aggressive fade for low-end devices
+      const fadeOpacity = isLowEndDevice ? 0.15 : 0.1;
+      ctx.fillStyle = `rgba(10, 10, 15, ${fadeOpacity})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Update and draw particles
@@ -115,14 +161,16 @@ export function SplashCursor({
         ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
         ctx.fill();
 
-        // Glow effect
-        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
-        gradient.addColorStop(0, p.color);
-        gradient.addColorStop(1, 'transparent');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * 2 * p.life, 0, Math.PI * 2);
-        ctx.fill();
+        // Glow effect - skip on low-end devices for better performance
+        if (!isLowEndDevice) {
+          const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
+          gradient.addColorStop(0, p.color);
+          gradient.addColorStop(1, 'transparent');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * 2 * p.life, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       ctx.globalAlpha = 1;
@@ -152,8 +200,12 @@ export function SplashCursor({
       const dy = mouseY - prevMouseY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      if (distance > 2) {
-        createParticles(mouseX, mouseY, Math.min(Math.floor(distance / 10), 5));
+      // Require more distance before creating particles on low-end devices
+      const minDistance = isLowEndDevice ? 5 : 2;
+      const maxCount = isLowEndDevice ? 3 : 5;
+      
+      if (distance > minDistance) {
+        createParticles(mouseX, mouseY, Math.min(Math.floor(distance / 10), maxCount));
       }
     }
 
@@ -174,7 +226,9 @@ export function SplashCursor({
         isMouseInBounds = relativeY >= 0 && relativeY <= maxHeight;
         
         if (isMouseInBounds) {
-          createParticles(mouseX, mouseY, 3);
+          // Fewer particles for touch on low-end devices
+          const touchParticleCount = isLowEndDevice ? 2 : 3;
+          createParticles(mouseX, mouseY, touchParticleCount);
         }
       }
     }
@@ -192,7 +246,7 @@ export function SplashCursor({
     window.addEventListener('resize', resizeCanvas);
 
     // Start animation
-    animate();
+    animationId = requestAnimationFrame(animate);
 
     // Cleanup
     return () => {
@@ -203,7 +257,7 @@ export function SplashCursor({
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       window.removeEventListener('resize', resizeCanvas);
     };
-  }, [RAINBOW_MODE, COLOR, maxHeight]);
+  }, [RAINBOW_MODE, COLOR, maxHeight, isLowEndDevice]);
 
   return (
     <div
