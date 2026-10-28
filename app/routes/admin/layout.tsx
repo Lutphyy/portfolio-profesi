@@ -1,16 +1,22 @@
-import { Link, NavLink, Outlet, redirect } from "react-router";
+import { Form, Link, NavLink, Outlet, redirect, useSubmit } from "react-router";
 import type { Route } from "./+types/layout";
 import { requireAuth } from "~/lib/auth.server";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
 import { getUnreadCount } from "~/services/message.service";
 import { cn } from "~/utils/helpers";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const { user } = await requireAuth(request);
+  const { user, session } = await requireAuth(request);
   const { supabase } = createSupabaseServerClient(request);
   const unreadCount = await getUnreadCount(supabase);
-  return { user, unreadCount };
+  
+  // Pass session timestamp for client-side idle timeout
+  return { 
+    user, 
+    unreadCount,
+    sessionTimestamp: Date.now()
+  };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -20,7 +26,13 @@ export async function action({ request }: Route.ActionArgs) {
   if (intent === "logout") {
     const { supabase, headers } = createSupabaseServerClient(request);
     await supabase.auth.signOut();
-    return redirect("/login", { headers });
+    
+    // Force clear all auth cookies
+    const responseHeaders = new Headers(headers);
+    responseHeaders.append('Set-Cookie', 'sb-access-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax');
+    responseHeaders.append('Set-Cookie', 'sb-refresh-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax');
+    
+    return redirect("/login", { headers: responseHeaders });
   }
 
   return null;
@@ -36,6 +48,7 @@ const sidebarLinks = [
       </svg>
     ),
     end: true,
+    prefetch: "intent" as const,
   },
   {
     to: "/admin/projects",
@@ -45,6 +58,7 @@ const sidebarLinks = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
       </svg>
     ),
+    prefetch: "intent" as const,
   },
   {
     to: "/admin/messages",
@@ -55,6 +69,7 @@ const sidebarLinks = [
       </svg>
     ),
     showBadge: true,
+    prefetch: "intent" as const,
   },
   {
     to: "/admin/profile",
@@ -64,12 +79,66 @@ const sidebarLinks = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
       </svg>
     ),
+    prefetch: "intent" as const,
   },
 ];
 
 export default function AdminLayout({ loaderData }: Route.ComponentProps) {
-  const { user, unreadCount } = loaderData;
+  const { user, unreadCount, sessionTimestamp } = loaderData;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const submit = useSubmit();
+
+  // Client-side idle timeout (30 minutes)
+  useEffect(() => {
+    const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+    let idleTimer: NodeJS.Timeout;
+    let lastActivity = Date.now();
+
+    const resetIdleTimer = () => {
+      lastActivity = Date.now();
+      clearTimeout(idleTimer);
+      
+      idleTimer = setTimeout(() => {
+        const now = Date.now();
+        const idleTime = now - lastActivity;
+        
+        // If idle for 30 minutes, force logout
+        if (idleTime >= IDLE_TIMEOUT) {
+          alert('Your session has expired due to inactivity. Please log in again.');
+          const formData = new FormData();
+          formData.append('intent', 'logout');
+          submit(formData, { method: 'post' });
+        }
+      }, IDLE_TIMEOUT);
+    };
+
+    // Track user activity
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    activityEvents.forEach(event => {
+      document.addEventListener(event, resetIdleTimer);
+    });
+
+    // Initialize timer
+    resetIdleTimer();
+
+    // Cleanup
+    return () => {
+      clearTimeout(idleTimer);
+      activityEvents.forEach(event => {
+        document.removeEventListener(event, resetIdleTimer);
+      });
+    };
+  }, [submit]);
+
+  // Handle logout with confirmation
+  const handleLogout = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (confirm('Are you sure you want to log out?')) {
+      const formData = new FormData();
+      formData.append('intent', 'logout');
+      submit(formData, { method: 'post', action: '/admin' });
+    }
+  };
 
   return (
     <div className="min-h-screen flex">
@@ -114,6 +183,7 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
               key={link.to}
               to={link.to}
               end={link.end}
+              prefetch={link.prefetch}
               onClick={() => setIsSidebarOpen(false)}
               className={({ isActive }) =>
                 cn(
@@ -140,18 +210,18 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
           <div className="px-3">
             <p className="text-xs text-gray-500 truncate">{user.email}</p>
           </div>
-          <form method="post">
+          <Form method="post" onSubmit={handleLogout}>
             <input type="hidden" name="intent" value="logout" />
             <button
               type="submit"
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 cursor-pointer"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
               </svg>
               Logout
             </button>
-          </form>
+          </Form>
 
           {/* Back to site */}
           <Link
