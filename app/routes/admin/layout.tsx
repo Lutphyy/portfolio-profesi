@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, redirect, useSubmit } from "react-router";
+import { Link, NavLink, Outlet, redirect, useFetcher } from "react-router";
 import type { Route } from "./+types/layout";
 import { requireAuth } from "~/lib/auth.server";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
@@ -86,7 +86,7 @@ const sidebarLinks = [
 export default function AdminLayout({ loaderData }: Route.ComponentProps) {
   const { user, unreadCount, sessionTimestamp } = loaderData;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const submit = useSubmit();
+  const fetcher = useFetcher();
 
   // Client-side idle timeout (30 minutes)
   useEffect(() => {
@@ -105,9 +105,10 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
         // If idle for 30 minutes, force logout
         if (idleTime >= IDLE_TIMEOUT) {
           alert('Your session has expired due to inactivity. Please log in again.');
-          const formData = new FormData();
-          formData.append('intent', 'logout');
-          submit(formData, { method: 'post' });
+          fetcher.submit(
+            { intent: 'logout' },
+            { method: 'post', action: '/admin/dashboard' }
+          );
         }
       }, IDLE_TIMEOUT);
     };
@@ -128,15 +129,15 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
         document.removeEventListener(event, resetIdleTimer);
       });
     };
-  }, [submit]);
+  }, [fetcher]);
 
   // Handle logout with confirmation
   const handleLogout = () => {
     if (confirm('Are you sure you want to log out?')) {
-      const formData = new FormData();
-      formData.append('intent', 'logout');
-      // Submit to current route (layout) without explicit action
-      submit(formData, { method: 'post' });
+      fetcher.submit(
+        { intent: 'logout' },
+        { method: 'post', action: '/admin/dashboard' }
+      );
     }
   };
 

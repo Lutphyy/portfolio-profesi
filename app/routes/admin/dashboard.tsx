@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, redirect } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { Card, CardBody } from "~/components/ui/Card";
 import { Badge } from "~/components/ui/Badge";
@@ -24,6 +24,25 @@ export async function loader({ request }: Route.LoaderArgs) {
   ]);
 
   return { projectCount, unreadCount, recentMessages };
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "logout") {
+    const { supabase, headers } = createSupabaseServerClient(request);
+    await supabase.auth.signOut();
+    
+    // Force clear all auth cookies
+    const responseHeaders = new Headers(headers);
+    responseHeaders.append('Set-Cookie', 'sb-access-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax');
+    responseHeaders.append('Set-Cookie', 'sb-refresh-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax');
+    
+    return redirect("/login", { headers: responseHeaders });
+  }
+
+  return null;
 }
 
 interface StatCardProps {
